@@ -113,7 +113,8 @@ class TradingPanel(QMainWindow):
     def init_ui(self):
         """初始化界面"""
         self.setWindowTitle("Billions Dollars - 交易控制面板")
-        self.setGeometry(0, 0, 1920, 1080)
+        # 增大窗口尺寸：宽度2400，高度1400
+        self.setGeometry(0, 0, 2400, 1400)
         
         # 创建中心部件
         central_widget = QWidget()
@@ -159,8 +160,8 @@ class TradingPanel(QMainWindow):
         
         main_splitter.addWidget(bottom_splitter)
         
-        # 设置上下比例 - 上半部分占3份，下半部分占1份
-        main_splitter.setStretchFactor(0, 3)
+        # 调整上下比例 - 上半部分占2份，下半部分占1份（下半部分更高）
+        main_splitter.setStretchFactor(0, 2)
         main_splitter.setStretchFactor(1, 1)
         
         main_layout.addWidget(main_splitter)

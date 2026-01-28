@@ -496,8 +496,11 @@ class TradingPanel(QMainWindow):
         self.ax.set_ylabel('Price (CNY)', fontsize=10)
         self.ax.grid(True, alpha=0.3, linestyle='--')
         
-        # 调整布局
-        self.figure.tight_layout()
+        # 强制设置边距为0（最大化显示区域）
+        self.figure.subplots_adjust(
+            top=1.0, bottom=0.0, left=0.0, right=1.0,
+            hspace=0.0, wspace=0.0
+        )
     
     def add_stock(self):
         """添加股票到显示列表"""
@@ -695,6 +698,12 @@ class TradingPanel(QMainWindow):
         self.figure = Figure(figsize=(8, 6))
         self.canvas = FigureCanvas(self.figure)
         self.ax = self.figure.add_subplot(111)
+        
+        # 设置默认边距为0（最大化显示区域）
+        self.figure.subplots_adjust(
+            top=1.0, bottom=0.0, left=0.0, right=1.0,
+            hspace=0.0, wspace=0.0
+        )
         
         # 创建自定义工具栏（中文提示）
         class ChineseNavigationToolbar(NavigationToolbar):

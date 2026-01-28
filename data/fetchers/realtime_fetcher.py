@@ -25,11 +25,11 @@ class RealtimeFetcher:
         """
         获取实时行情 - 尝试多个数据源
         """
-        # 数据源优先级
+        # 数据源优先级（按速度和稳定性排序）
         sources = [
-            self.fetch_from_sina,      # 新浪财经（最稳定）
-            self.fetch_from_163,       # 网易财经
-            self.fetch_from_qq,        # 腾讯财经
+            self.fetch_from_qq,        # 腾讯财经（最快：70ms，最稳定）
+            self.fetch_from_sina,      # 新浪财经（较快：77ms）
+            self.fetch_from_163,       # 网易财经（已不可用，保留作为备用）
         ]
         
         for fetch_func in sources:

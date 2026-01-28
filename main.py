@@ -35,10 +35,18 @@ class TradingPanel(QMainWindow):
         self.stock_list = []  # 存储添加的股票代码
         self.fetcher = RealtimeFetcher()  # 实时数据获取器
         self.quote_cache = {}  # 缓存行情数据
+        self.kline_cache = {}  # 缓存K线数据
         self.workers = {}  # 工作线程字典
         # 使用脚本所在目录作为基准路径
         self.base_dir = os.path.dirname(os.path.abspath(__file__))
         self.stock_file = os.path.join(self.base_dir, 'stock_list.json')
+        
+        # K线加载防抖动定时器
+        self.kline_load_timer = QTimer()
+        self.kline_load_timer.setSingleShot(True)
+        self.kline_load_timer.timeout.connect(self._do_load_kline)
+        self.pending_stock_code = None
+        
         self.init_ui()
         self.load_stock_list()  # 加载保存的股票列表
         self.setup_timer()  # 设置定时刷新
@@ -245,11 +253,18 @@ class TradingPanel(QMainWindow):
         return widget
     
     def on_current_cell_changed(self, current_row, current_col, previous_row, previous_col):
-        """当前单元格变化时触发（包括键盘导航）"""
+        """当前单元格变化时触发（包括键盘导航）- 使用防抖动"""
         if current_row >= 0 and current_row < len(self.stock_list):
             stock_code = self.stock_list[current_row]
-            self.log_message(f"📊 正在加载 {stock_code} 的K线图...")
-            self.load_kline_chart(stock_code)
+            self.pending_stock_code = stock_code
+            
+            # 如果有缓存，立即显示
+            if stock_code in self.kline_cache:
+                self._render_kline_from_cache(stock_code)
+            else:
+                # 延迟加载，避免快速切换时重复请求
+                self.kline_load_timer.stop()
+                self.kline_load_timer.start(150)  # 150毫秒延迟
     
     def delete_selected_stock(self):
         """删除选中的股票"""
@@ -283,9 +298,36 @@ class TradingPanel(QMainWindow):
         # 由于currentCellChanged会自动触发，这里不需要重复处理
         pass
     
+    def _do_load_kline(self):
+        """实际执行K线加载（防抖动后）"""
+        if self.pending_stock_code:
+            self.load_kline_chart(self.pending_stock_code)
+    
+    def _render_kline_from_cache(self, stock_code):
+        """从缓存渲染K线图（快速显示）"""
+        if stock_code not in self.kline_cache:
+            return
+        
+        df = self.kline_cache[stock_code]
+        stock_name = self.quote_cache.get(stock_code, {}).get('name', stock_code)
+        
+        # 清空之前的图表
+        self.ax.clear()
+        
+        # 绘制K线图
+        self.plot_kline_with_ma(df, stock_code, stock_name)
+        self.canvas.draw()
+    
     def load_kline_chart(self, stock_code):
         """加载K线图"""
         from data.fetchers.kline_fetcher import KLineFetcher
+        
+        # 检查缓存
+        if stock_code in self.kline_cache:
+            self._render_kline_from_cache(stock_code)
+            return
+        
+        self.log_message(f"📊 正在加载 {stock_code} 的K线图...")
         
         try:
             # 获取K线数据（获取更多数据以便计算均线）
@@ -300,6 +342,9 @@ class TradingPanel(QMainWindow):
             df['ma5'] = df['close'].rolling(window=5).mean()
             df['ma10'] = df['close'].rolling(window=10).mean()
             df['ma20'] = df['close'].rolling(window=20).mean()
+            
+            # 缓存K线数据
+            self.kline_cache[stock_code] = df
             
             # 清空之前的图表
             self.ax.clear()

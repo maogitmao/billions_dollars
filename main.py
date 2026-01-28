@@ -232,12 +232,24 @@ class TradingPanel(QMainWindow):
         
         # 设置选择模式为整行选择
         self.stock_table.setSelectionBehavior(QTableWidget.SelectRows)
+        # 设置单选模式
+        self.stock_table.setSelectionMode(QTableWidget.SingleSelection)
+        
         # 连接点击事件
         self.stock_table.cellClicked.connect(self.on_stock_selected)
+        # 连接当前行变化事件（支持键盘导航）
+        self.stock_table.currentCellChanged.connect(self.on_current_cell_changed)
         
         layout.addWidget(self.stock_table)
         
         return widget
+    
+    def on_current_cell_changed(self, current_row, current_col, previous_row, previous_col):
+        """当前单元格变化时触发（包括键盘导航）"""
+        if current_row >= 0 and current_row < len(self.stock_list):
+            stock_code = self.stock_list[current_row]
+            self.log_message(f"📊 正在加载 {stock_code} 的K线图...")
+            self.load_kline_chart(stock_code)
     
     def delete_selected_stock(self):
         """删除选中的股票"""
@@ -267,11 +279,9 @@ class TradingPanel(QMainWindow):
         self.refresh_quotes()
     
     def on_stock_selected(self, row, column):
-        """股票被选中时显示K线图"""
-        if row < len(self.stock_list):
-            stock_code = self.stock_list[row]
-            self.log_message(f"� 正在加载 {stock_code} 的K线图...")
-            self.load_kline_chart(stock_code)
+        """股票被点击时（保留用于兼容，实际由on_current_cell_changed处理）"""
+        # 由于currentCellChanged会自动触发，这里不需要重复处理
+        pass
     
     def load_kline_chart(self, stock_code):
         """加载K线图"""

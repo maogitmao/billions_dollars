@@ -31,23 +31,30 @@ class KLineFetcher:
         Returns:
             DataFrame: K线数据
         """
-        # 尝试多个数据源
+        # 尝试多个数据源（新浪最稳定，放在第一位）
         sources = [
-            self.fetch_from_akshare,
-            self.fetch_from_eastmoney,
-            self.fetch_from_sina,
-            self.fetch_from_163
+            ('新浪财经', self.fetch_from_sina),
+            ('AKShare', self.fetch_from_akshare),
+            ('东方财富', self.fetch_from_eastmoney),
+            ('网易财经', self.fetch_from_163)
         ]
         
-        for fetch_func in sources:
+        errors = []
+        for source_name, fetch_func in sources:
             try:
                 df = fetch_func(stock_code, count)
                 if df is not None and not df.empty and len(df) > 10:
-                    print(f"{fetch_func.__name__} 成功获取 {len(df)} 条数据")
+                    # 只在第一次成功时输出（减少日志）
+                    if not errors:
+                        pass  # 静默成功
                     return df
             except Exception as e:
-                print(f"{fetch_func.__name__} 失败: {e}")
+                errors.append(f"{source_name}: {str(e)}")
                 continue
+        
+        # 所有数据源都失败时才输出错误
+        if errors:
+            print(f"⚠️ 获取 {stock_code} K线数据失败，已尝试 {len(errors)} 个数据源")
         
         return None
     

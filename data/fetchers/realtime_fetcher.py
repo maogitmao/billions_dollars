@@ -25,11 +25,12 @@ class RealtimeFetcher:
         """
         获取实时行情 - 尝试多个数据源
         """
-        # 数据源优先级（按速度和稳定性排序）
+        # 数据源优先级（按速度排序）
         sources = [
-            self.fetch_from_qq,        # 腾讯财经（最快：70ms，最稳定）
-            self.fetch_from_sina,      # 新浪财经（较快：77ms）
-            self.fetch_from_163,       # 网易财经（已不可用，保留作为备用）
+            self.fetch_from_eastmoney,  # 东方财富（最快：39ms）
+            self.fetch_from_qq,         # 腾讯财经（较快：78ms）
+            self.fetch_from_sina,       # 新浪财经（较快：76ms）
+            self.fetch_from_163,        # 网易财经（已不可用）
         ]
         
         for fetch_func in sources:
@@ -273,6 +274,74 @@ class RealtimeFetcher:
                 'circulation': circulation,
                 'time': datetime.now().strftime('%H:%M:%S'),
                 'source': '腾讯财经',
+                'error': None
+            }
+            
+        except Exception as e:
+            return None
+    
+    def fetch_from_eastmoney(self, stock_code):
+        """从东方财富获取实时行情"""
+        try:
+            # 转换股票代码格式
+            if stock_code.startswith('6'):
+                secid = f'1.{stock_code}'
+            else:
+                secid = f'0.{stock_code}'
+            
+            url = f'http://push2.eastmoney.com/api/qt/stock/get?secid={secid}&fields=f43,f44,f45,f46,f47,f48,f49,f50,f51,f52,f57,f58,f60,f116,f117,f169,f170,f171'
+            response = self.session.get(url, timeout=5)
+            
+            if response.status_code != 200:
+                return None
+            
+            data = response.json()
+            if not data.get('data'):
+                return None
+            
+            stock_data = data['data']
+            
+            # 东方财富字段说明
+            # f57: 股票代码, f58: 股票名称
+            # f43: 最新价, f44: 最高价, f45: 最低价, f46: 今开价
+            # f60: 昨收价, f47: 成交量(手), f48: 成交额(元)
+            # f169: 涨跌额, f170: 涨跌幅, f171: 振幅
+            # f116: 总市值, f117: 流通市值
+            
+            name = stock_data.get('f58', '未知')
+            current_price = float(stock_data.get('f43', 0)) / 100  # 价格需要除以100
+            high = float(stock_data.get('f44', 0)) / 100
+            low = float(stock_data.get('f45', 0)) / 100
+            open_price = float(stock_data.get('f46', 0)) / 100
+            pre_close = float(stock_data.get('f60', 0)) / 100
+            volume = int(stock_data.get('f47', 0))
+            amount = float(stock_data.get('f48', 0))
+            
+            change = float(stock_data.get('f169', 0)) / 100
+            change_pct = float(stock_data.get('f170', 0)) / 100
+            amplitude = float(stock_data.get('f171', 0)) / 100
+            
+            # 市值（已经是亿元）
+            market_cap = float(stock_data.get('f116', 0)) / 100000000 if stock_data.get('f116') else 0
+            circulation = float(stock_data.get('f117', 0)) / 100000000 if stock_data.get('f117') else 0
+            
+            return {
+                'code': stock_code,
+                'name': name,
+                'price': current_price,
+                'change': change,
+                'change_pct': change_pct,
+                'volume': volume,
+                'amount': amount,
+                'high': high,
+                'low': low,
+                'open': open_price,
+                'pre_close': pre_close,
+                'amplitude': amplitude,
+                'market_cap': market_cap,
+                'circulation': circulation,
+                'time': datetime.now().strftime('%H:%M:%S'),
+                'source': '东方财富',
                 'error': None
             }
             

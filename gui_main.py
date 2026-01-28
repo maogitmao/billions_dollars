@@ -18,7 +18,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QTimer, QThreadPool
 from PyQt5.QtGui import QColor
-from realtime_fetcher import RealtimeFetcher
+from data.fetchers.realtime_fetcher import RealtimeFetcher
 from quote_worker import QuoteWorker
 
 
@@ -270,7 +270,7 @@ class TradingPanel(QMainWindow):
     
     def load_kline_chart(self, stock_code):
         """加载K线图"""
-        from kline_fetcher import KLineFetcher
+        from data.fetchers.kline_fetcher import KLineFetcher
         
         try:
             # 获取K线数据（获取更多数据以便计算均线）

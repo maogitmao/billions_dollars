@@ -6,7 +6,7 @@
 """
 
 from PyQt5.QtCore import QThread, pyqtSignal
-from realtime_fetcher import RealtimeFetcher
+from data.fetchers.realtime_fetcher import RealtimeFetcher
 
 
 class QuoteWorker(QThread):

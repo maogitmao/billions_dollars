@@ -21,6 +21,11 @@ from PyQt5.QtGui import QColor
 from data.fetchers.realtime_fetcher import RealtimeFetcher
 from quote_worker import QuoteWorker
 
+# 配置matplotlib中文字体
+import matplotlib
+matplotlib.rcParams['font.sans-serif'] = ['Noto Sans CJK SC', 'Noto Sans CJK TC', 'DejaVu Sans', 'SimHei', 'Microsoft YaHei']
+matplotlib.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
+
 
 class TradingPanel(QMainWindow):
     """交易控制面板主窗口"""
@@ -655,9 +660,9 @@ class TradingPanel(QMainWindow):
         self.toolbar = ChineseNavigationToolbar(self.canvas, widget)
         layout.addWidget(self.toolbar)
         
-        # 初始化空图表
-        self.ax.text(0.5, 0.5, '点击股票查看K线图', 
-                    ha='center', va='center', fontsize=12)
+        # 初始化空图表（使用英文避免字体加载问题）
+        self.ax.text(0.5, 0.5, 'Click a stock to view K-Line chart', 
+                    ha='center', va='center', fontsize=12, family='sans-serif')
         self.ax.set_xticks([])
         self.ax.set_yticks([])
         

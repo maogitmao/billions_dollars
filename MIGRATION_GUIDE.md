@@ -9,7 +9,7 @@
 ### 旧结构
 ```
 billions_dollars/
-├── gui_main.py
+├── main.py                      # 主入口
 ├── realtime_fetcher.py
 ├── kline_fetcher.py
 ├── quote_worker.py
@@ -20,7 +20,7 @@ billions_dollars/
 ```
 billions_dollars/
 ├── config.py                    # 全局配置
-├── gui_main.py                  # GUI入口（保持兼容）
+├── main.py                      # 主入口（保持兼容）
 ├── quote_worker.py              # 工作线程（保持兼容）
 │
 ├── core/                        # 核心模块
@@ -80,7 +80,7 @@ from utils.time_utils import is_trading_time
 ## 兼容性说明
 
 ### ✅ 完全兼容
-- `gui_main.py` - 已更新导入路径，功能不变
+- `main.py` - 已更新导入路径，功能不变
 - `quote_worker.py` - 已更新导入路径，功能不变
 - 所有现有功能正常工作
 
@@ -98,16 +98,9 @@ from utils.time_utils import is_trading_time
 
 ## 运行方式
 
-### 不变
+### 统一入口
 ```bash
-python gui_main.py
-```
-
-### 新增（未来）
-```bash
-python main.py --mode gui        # GUI模式
-python main.py --mode cli        # 命令行模式
-python main.py --mode monitor    # 监控模式
+python3 main.py
 ```
 
 ## 后续开发指南
@@ -170,7 +163,7 @@ data_center.update_quote('600000', quote_data)
 
 ### 测试现有功能
 ```bash
-python gui_main.py
+python3 main.py
 ```
 确认：
 - ✅ 添加股票正常

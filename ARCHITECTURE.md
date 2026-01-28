@@ -17,8 +17,7 @@
 ```
 billions_dollars/
 │
-├── main.py                      # 主入口（命令行版本）
-├── gui_main.py                  # GUI入口
+├── main.py                      # 主入口（GUI界面）
 ├── config.py                    # 全局配置
 ├── requirements.txt             # 依赖列表
 │

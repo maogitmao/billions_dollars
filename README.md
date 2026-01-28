@@ -51,7 +51,7 @@ pip install -r requirements.txt
 ### 2. 运行程序
 
 ```bash
-python3 gui_main.py
+python3 main.py
 ```
 
 ### 3. 使用说明
@@ -138,13 +138,13 @@ kline = data_center.get_kline('600000', 'daily')
 ### Windows
 ```bash
 pip install pyinstaller
-pyinstaller --onefile --windowed --name "BillionsDollars" gui_main.py
+pyinstaller --onefile --windowed --name "BillionsDollars" main.py
 ```
 
 ### Linux
 ```bash
 pip install pyinstaller
-pyinstaller --onefile --name "BillionsDollars" gui_main.py
+pyinstaller --onefile --name "BillionsDollars" main.py
 ```
 
 ## 更新日志

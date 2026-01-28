@@ -137,9 +137,9 @@ class TradingPanel(QMainWindow):
         chart_widget = self.create_chart_widget()
         top_splitter.addWidget(chart_widget)
         
-        # 设置上半部分比例
-        top_splitter.setStretchFactor(0, 1)
-        top_splitter.setStretchFactor(1, 1)
+        # 调整上半部分左右比例 - 行情区域占3份，K线区域占2份
+        top_splitter.setStretchFactor(0, 3)
+        top_splitter.setStretchFactor(1, 2)
         
         main_splitter.addWidget(top_splitter)
         

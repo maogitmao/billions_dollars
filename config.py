@@ -3,6 +3,8 @@
 
 """
 全局配置文件
+
+⚠️ 项目规则：不创建说明文档（README.md等），代码即文档
 """
 
 import os
@@ -16,8 +18,15 @@ CACHE_DIR = STORAGE_DIR / 'cache'
 LOGS_DIR = STORAGE_DIR / 'logs'
 CONFIG_DIR = STORAGE_DIR / 'config'
 
+# 参考数据路径
+REFERENCE_DIR = BASE_DIR / 'reference'
+HISTORICAL_DIR = REFERENCE_DIR / 'historical'
+REFERENCE_DATA_DIR = REFERENCE_DIR / 'reference_data'
+DOWNLOADS_DIR = REFERENCE_DIR / 'downloads'
+
 # 确保目录存在
-for dir_path in [STORAGE_DIR, DATABASE_DIR, CACHE_DIR, LOGS_DIR, CONFIG_DIR]:
+for dir_path in [STORAGE_DIR, DATABASE_DIR, CACHE_DIR, LOGS_DIR, CONFIG_DIR,
+                 REFERENCE_DIR, HISTORICAL_DIR, REFERENCE_DATA_DIR, DOWNLOADS_DIR]:
     dir_path.mkdir(parents=True, exist_ok=True)
 
 # ==================== 数据配置 ====================
@@ -41,7 +50,13 @@ MONITOR_ENABLED = True
 MONITOR_INTERVAL = 1
 
 # 最大监控股票数量
-MAX_MONITOR_STOCKS = 100
+MAX_MONITOR_STOCKS = 200
+
+# 线程池配置
+THREAD_POOL_CONFIG = {
+    'max_workers': 30,  # 最大并发线程数（根据网络情况调整，推荐20-50）
+    'timeout': 5,       # 单个请求超时时间（秒）
+}
 
 # ==================== AI配置 ====================
 # 本地大模型配置

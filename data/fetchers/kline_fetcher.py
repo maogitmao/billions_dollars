@@ -95,7 +95,10 @@ class KLineFetcher:
     def fetch_from_sina(self, stock_code, count):
         """从新浪财经获取K线数据"""
         try:
-            if stock_code.startswith('6'):
+            if stock_code == '999999':
+                # 上证指数
+                symbol = 'sh000001'
+            elif stock_code.startswith('6'):
                 symbol = f'sh{stock_code}'
             else:
                 symbol = f'sz{stock_code}'
@@ -181,7 +184,10 @@ class KLineFetcher:
     def fetch_from_eastmoney(self, stock_code, count):
         """从东方财富获取K线数据"""
         try:
-            if stock_code.startswith('6'):
+            if stock_code == '999999':
+                # 上证指数
+                secid = '1.000001'
+            elif stock_code.startswith('6'):
                 secid = f'1.{stock_code}'
             else:
                 secid = f'0.{stock_code}'

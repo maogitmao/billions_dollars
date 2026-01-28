@@ -9,6 +9,7 @@ akshare>=1.12.0
 # 数据处理
 pandas>=2.0.0
 numpy>=1.24.0
+pyarrow>=10.0.0  # pandas 3.0将要求，提前安装避免警告
 
 # 图表绘制
 matplotlib>=3.7.0

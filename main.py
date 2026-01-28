@@ -3,23 +3,35 @@
 
 """
 Billions Dollars - 交易控制面板主界面
+
+⚠️ 项目规则：
+- 代码即文档，不创建冗余说明文档
+- 安装说明：docs/INSTALL.md
+- 测试文件：tests/
+- 所有说明都在代码注释中
 """
 
 import sys
 import json
 import os
 from datetime import datetime
+
+# 抑制pandas的pyarrow警告
+import warnings
+warnings.filterwarnings('ignore', category=DeprecationWarning, module='pandas')
+
 import pandas as pd
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, 
     QHBoxLayout, QSplitter, QTextEdit, QLabel, 
-    QLineEdit, QPushButton, QListWidget, QComboBox,
+    QLineEdit, QPushButton, QComboBox,
     QTableWidget, QTableWidgetItem, QHeaderView
 )
-from PyQt5.QtCore import Qt, QTimer, QThreadPool
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QColor
 from data.fetchers.realtime_fetcher import RealtimeFetcher
-from quote_worker import QuoteWorker
+from core.quote_manager import QuoteManager
+from config import THREAD_POOL_CONFIG
 
 # 配置matplotlib中文字体
 import matplotlib
@@ -33,10 +45,16 @@ class TradingPanel(QMainWindow):
     def __init__(self):
         super().__init__()
         self.stock_list = []  # 存储添加的股票代码
-        self.fetcher = RealtimeFetcher()  # 实时数据获取器
         self.quote_cache = {}  # 缓存行情数据
         self.kline_cache = {}  # 缓存K线数据
-        self.workers = {}  # 工作线程字典
+        
+        # 使用新的行情管理器（线程池，支持200+股票）
+        max_workers = THREAD_POOL_CONFIG.get('max_workers', 30)
+        self.quote_manager = QuoteManager(max_workers=max_workers)
+        self.quote_manager.quote_updated.connect(self.on_quote_ready)
+        self.quote_manager.batch_progress.connect(self.on_batch_progress)
+        self.quote_manager.all_completed.connect(self.on_all_quotes_completed)
+        
         # 使用脚本所在目录作为基准路径
         self.base_dir = os.path.dirname(os.path.abspath(__file__))
         self.stock_file = os.path.join(self.base_dir, 'stock_list.json')
@@ -47,9 +65,15 @@ class TradingPanel(QMainWindow):
         self.kline_load_timer.timeout.connect(self._do_load_kline)
         self.pending_stock_code = None
         
+        # 刷新进度统计
+        self.refresh_start_time = None
+        
         self.init_ui()
-        self.load_stock_list()  # 加载保存的股票列表
+        self.load_stock_list()  # 加载保存的股票列表（会自动确保000001在第一位）
+        
+        self.update_display()
         self.setup_timer()  # 设置定时刷新
+        self.refresh_quotes()  # 立即刷新一次行情
     
     def load_stock_list(self):
         """从文件加载股票列表"""
@@ -62,8 +86,6 @@ class TradingPanel(QMainWindow):
                 if self.stock_list:
                     print(f"📂 已加载 {len(self.stock_list)} 只股票: {self.stock_list}")
                     self.log_message(f"📂 已加载 {len(self.stock_list)} 只股票")
-                    self.update_display()
-                    self.refresh_quotes()
                 else:
                     print("📂 股票列表为空")
             except Exception as e:
@@ -71,6 +93,12 @@ class TradingPanel(QMainWindow):
                 self.log_message(f"⚠️ 加载股票列表失败: {str(e)}")
         else:
             print(f"📂 股票列表文件不存在: {self.stock_file}")
+        
+        # 确保999999上证指数始终在第一个位置
+        if '999999' in self.stock_list:
+            self.stock_list.remove('999999')
+        self.stock_list.insert(0, '999999')
+        self.log_message("📊 上证指数(999999)已设为默认首位")
     
     def save_stock_list(self):
         """保存股票列表到文件"""
@@ -95,12 +123,12 @@ class TradingPanel(QMainWindow):
         # 停止定时器
         if hasattr(self, 'timer'):
             self.timer.stop()
+        if hasattr(self, 'kline_refresh_timer'):
+            self.kline_refresh_timer.stop()
         
-        # 停止所有工作线程
-        for worker in self.workers.values():
-            if worker.isRunning():
-                worker.quit()
-                worker.wait(1000)  # 等待最多1秒
+        # 等待线程池完成
+        if hasattr(self, 'quote_manager'):
+            self.quote_manager.wait_for_done(3000)
         
         event.accept()
     
@@ -109,12 +137,17 @@ class TradingPanel(QMainWindow):
         self.timer = QTimer()
         self.timer.timeout.connect(self.refresh_quotes)
         self.timer.start(3000)  # 3秒刷新一次，与同花顺Level-1行情一致
+        
+        # K线图刷新定时器（每30秒刷新一次当前显示的K线图）
+        self.kline_refresh_timer = QTimer()
+        self.kline_refresh_timer.timeout.connect(self.refresh_current_kline)
+        self.kline_refresh_timer.start(30000)  # 30秒刷新一次K线
     
     def init_ui(self):
         """初始化界面"""
         self.setWindowTitle("Billions Dollars - 交易控制面板")
-        # 增大窗口尺寸：宽度2400，高度1400
-        self.setGeometry(0, 0, 2400, 1400)
+        # 增大窗口尺寸：宽度2400，高度1680（原1400增加20%）
+        self.setGeometry(0, 0, 2400, 1680)
         
         # 创建中心部件
         central_widget = QWidget()
@@ -160,9 +193,9 @@ class TradingPanel(QMainWindow):
         
         main_splitter.addWidget(bottom_splitter)
         
-        # 调整上下比例 - 上半部分占2份，下半部分占1份（下半部分更高）
-        main_splitter.setStretchFactor(0, 2)
-        main_splitter.setStretchFactor(1, 1)
+        # 调整上下比例 - 上半部分占3份，下半部分占2份（下半部分更高）
+        main_splitter.setStretchFactor(0, 3)
+        main_splitter.setStretchFactor(1, 2)
         
         main_layout.addWidget(main_splitter)
     
@@ -207,6 +240,12 @@ class TradingPanel(QMainWindow):
         refresh_button.setStyleSheet("padding: 5px 15px; font-weight: bold;")
         refresh_button.setFixedHeight(35)
         input_layout.addWidget(refresh_button)
+        
+        # 线程池状态标签
+        self.thread_status_label = QLabel("线程: 0/30")
+        self.thread_status_label.setStyleSheet("font-size: 12px; padding: 5px;")
+        self.thread_status_label.setFixedHeight(35)
+        input_layout.addWidget(self.thread_status_label)
         
         layout.addLayout(input_layout)
         
@@ -280,6 +319,12 @@ class TradingPanel(QMainWindow):
         for row in rows:
             if row < len(self.stock_list):
                 stock_code = self.stock_list[row]
+                
+                # 不允许删除999999上证指数
+                if stock_code == '999999':
+                    self.log_message("⚠️ 上证指数(999999)是系统默认股票，不能删除")
+                    continue
+                
                 self.stock_list.pop(row)
                 self.log_message(f"🗑️ 已删除股票：{stock_code}")
         
@@ -295,8 +340,7 @@ class TradingPanel(QMainWindow):
         self.refresh_quotes()
     
     def on_stock_selected(self, row, column):
-        """股票被点击时（保留用于兼容，实际由on_current_cell_changed处理）"""
-        # 由于currentCellChanged会自动触发，这里不需要重复处理
+        """股票被点击时 - 已由on_current_cell_changed处理，此方法可删除但保留以防兼容性问题"""
         pass
     
     def _do_load_kline(self):
@@ -314,8 +358,9 @@ class TradingPanel(QMainWindow):
         
         # 清空之前的图表
         self.ax.clear()
+        self.ax_macd.clear()
         
-        # 绘制K线图
+        # 绘制K线图和MACD
         self.plot_kline_with_ma(df, stock_code, stock_name)
         self.canvas.draw()
     
@@ -344,11 +389,15 @@ class TradingPanel(QMainWindow):
             df['ma10'] = df['close'].rolling(window=10).mean()
             df['ma20'] = df['close'].rolling(window=20).mean()
             
+            # 计算MACD
+            df = self.calculate_macd(df)
+            
             # 缓存K线数据
             self.kline_cache[stock_code] = df
             
             # 清空之前的图表
             self.ax.clear()
+            self.ax_macd.clear()
             
             # 绘制K线图
             stock_name = self.quote_cache.get(stock_code, {}).get('name', stock_code)
@@ -365,10 +414,84 @@ class TradingPanel(QMainWindow):
             import traceback
             traceback.print_exc()
     
+    def refresh_current_kline(self):
+        """刷新当前显示的K线图（仅在交易时段）"""
+        current_row = self.stock_table.currentRow()
+        if current_row < 0 or current_row >= len(self.stock_list):
+            return
+        
+        stock_code = self.stock_list[current_row]
+        
+        # 检查是否在交易时段或收盘后15分钟内
+        from datetime import time
+        now = datetime.now()
+        current_time = now.time()
+        
+        is_trading = (
+            (time(9, 30) <= current_time <= time(11, 30)) or
+            (time(13, 0) <= current_time <= time(15, 0))
+        )
+        is_after_close = time(15, 0) <= current_time <= time(15, 15)
+        
+        if is_trading or is_after_close:
+            # 清除缓存，强制重新获取数据
+            if stock_code in self.kline_cache:
+                del self.kline_cache[stock_code]
+            
+            self.log_message(f"🔄 自动刷新 {stock_code} K线图...")
+            self.load_kline_chart(stock_code)
+    
+    def on_height_ratio_changed(self, ratio_text):
+        """当高度比例改变时重新绘制图表"""
+        # 解析比例文本，如 "3:1" -> [3, 1]
+        ratios = [int(x) for x in ratio_text.split(':')]
+        
+        # 清除旧的子图
+        self.figure.clear()
+        
+        # 重新创建GridSpec和子图
+        from matplotlib.gridspec import GridSpec
+        self.gs = GridSpec(2, 1, figure=self.figure, height_ratios=ratios, hspace=0.05)
+        self.ax = self.figure.add_subplot(self.gs[0])
+        self.ax_macd = self.figure.add_subplot(self.gs[1])
+        
+        # 设置边距
+        self.figure.subplots_adjust(
+            top=0.97, bottom=0.06, left=0.04, right=0.99
+        )
+        
+        # 如果有当前选中的股票，重新绘制
+        current_row = self.stock_table.currentRow()
+        if current_row >= 0 and current_row < len(self.stock_list):
+            stock_code = self.stock_list[current_row]
+            if stock_code in self.kline_cache:
+                self._render_kline_from_cache(stock_code)
+        
+        # 重新绘制
+        self.canvas.draw()
+        self.log_message(f"📐 K线高度比例已调整为 {ratio_text}")
+    
+    def calculate_macd(self, df):
+        """计算MACD指标"""
+        # 计算EMA
+        df['ema12'] = df['close'].ewm(span=12, adjust=False).mean()
+        df['ema26'] = df['close'].ewm(span=26, adjust=False).mean()
+        
+        # 计算DIF (MACD线)
+        df['dif'] = df['ema12'] - df['ema26']
+        
+        # 计算DEA (信号线)
+        df['dea'] = df['dif'].ewm(span=9, adjust=False).mean()
+        
+        # 计算MACD柱 (histogram)
+        df['macd'] = (df['dif'] - df['dea']) * 2
+        
+        return df
+    
     def plot_kline_with_ma(self, df, stock_code, stock_name):
         """绘制K线图和均线"""
         import numpy as np
-        from datetime import datetime, time
+        from datetime import time
         
         # 设置标题
         self.ax.set_title(f'{stock_code} - Daily K-Line', fontsize=14, pad=10)
@@ -405,32 +528,19 @@ class TradingPanel(QMainWindow):
                 price_label = 'Real-time' if is_trading else 'Latest'
                 use_realtime = is_trading
         
-        # 获取历史均线
+        # 获取历史均线（最后一个有效值）
         static_ma5 = df['ma5'].dropna().iloc[-1] if not df['ma5'].dropna().empty else 0
         static_ma10 = df['ma10'].dropna().iloc[-1] if not df['ma10'].dropna().empty else 0
         static_ma20 = df['ma20'].dropna().iloc[-1] if not df['ma20'].dropna().empty else 0
         
         # 计算动态均线（包含实时价格）
         if use_realtime:
-            # 用实时价格替换最后一天的收盘价，然后取最近N天
             closes_list = list(closes)
-            closes_list[-1] = current_price  # 替换最后一天为实时价格
+            closes_list[-1] = current_price
             
-            # 计算最近5/10/20天的均价
-            if len(closes_list) >= 5:
-                live_ma5 = np.mean(closes_list[-5:])
-            else:
-                live_ma5 = static_ma5
-                
-            if len(closes_list) >= 10:
-                live_ma10 = np.mean(closes_list[-10:])
-            else:
-                live_ma10 = static_ma10
-                
-            if len(closes_list) >= 20:
-                live_ma20 = np.mean(closes_list[-20:])
-            else:
-                live_ma20 = static_ma20
+            live_ma5 = np.mean(closes_list[-5:]) if len(closes_list) >= 5 else static_ma5
+            live_ma10 = np.mean(closes_list[-10:]) if len(closes_list) >= 10 else static_ma10
+            live_ma20 = np.mean(closes_list[-20:]) if len(closes_list) >= 20 else static_ma20
         else:
             live_ma5 = static_ma5
             live_ma10 = static_ma10
@@ -444,9 +554,7 @@ class TradingPanel(QMainWindow):
             self.ax.plot([i, i], [lows[i], highs[i]], color=color, linewidth=0.5)
             
             # 绘制实体
-            height = abs(closes[i] - opens[i])
-            if height == 0:
-                height = 0.01  # 避免高度为0
+            height = abs(closes[i] - opens[i]) or 0.01  # 避免高度为0
             bottom = min(opens[i], closes[i])
             self.ax.bar(i, height, bottom=bottom, color=color, width=0.6, alpha=0.8)
         
@@ -460,7 +568,7 @@ class TradingPanel(QMainWindow):
         if use_realtime and current_price != closes[-1]:
             self.ax.axhline(y=current_price, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
         
-        # 在左上角添加价格信息框（同时显示静态和动态均线）
+        # 在左上角添加价格信息框
         if use_realtime:
             info_text = (
                 f'{price_label}: {current_price:.2f}\n'
@@ -490,16 +598,40 @@ class TradingPanel(QMainWindow):
         x_ticks = range(0, len(dates), step)
         x_labels = [pd.to_datetime(dates[i]).strftime('%m-%d') for i in x_ticks]
         self.ax.set_xticks(x_ticks)
-        self.ax.set_xticklabels(x_labels, rotation=45)
+        self.ax.set_xticklabels([])  # K线图不显示X轴标签
         
         # 设置Y轴
         self.ax.set_ylabel('Price (CNY)', fontsize=10)
         self.ax.grid(True, alpha=0.3, linestyle='--')
         
-        # 强制设置边距为0（最大化显示区域）
+        # ========== 绘制MACD ==========
+        dif = df['dif'].values
+        dea = df['dea'].values
+        macd = df['macd'].values
+        
+        # 绘制MACD柱状图
+        colors = ['red' if m >= 0 else 'green' for m in macd]
+        self.ax_macd.bar(x_range, macd, color=colors, alpha=0.6, width=0.6)
+        
+        # 绘制DIF和DEA线
+        self.ax_macd.plot(x_range, dif, color='blue', linewidth=1.5, label='DIF', alpha=0.8)
+        self.ax_macd.plot(x_range, dea, color='orange', linewidth=1.5, label='DEA', alpha=0.8)
+        
+        # 绘制零轴线
+        self.ax_macd.axhline(y=0, color='gray', linestyle='-', linewidth=0.5, alpha=0.5)
+        
+        # 设置MACD的X轴（显示日期）
+        self.ax_macd.set_xticks(x_ticks)
+        self.ax_macd.set_xticklabels(x_labels, rotation=45)
+        
+        # 设置MACD的Y轴
+        self.ax_macd.set_ylabel('MACD', fontsize=10)
+        self.ax_macd.grid(True, alpha=0.3, linestyle='--')
+        self.ax_macd.legend(loc='upper left', fontsize=8)
+        
+        # 设置边距
         self.figure.subplots_adjust(
-            top=1.0, bottom=0.0, left=0.0, right=1.0,
-            hspace=0.0, wspace=0.0
+            top=0.97, bottom=0.06, left=0.04, right=0.99
         )
     
     def add_stock(self):
@@ -537,51 +669,73 @@ class TradingPanel(QMainWindow):
             self.log_message(f"❌ 添加股票失败: {str(e)}")
     
     def refresh_quotes(self):
-        """刷新所有股票行情（使用多线程）"""
+        """刷新所有股票行情（使用线程池优化）"""
         if not self.stock_list:
             return
         
-        for stock_code in self.stock_list:
-            # 如果该股票的线程还在运行，跳过
-            if stock_code in self.workers and self.workers[stock_code].isRunning():
-                continue
+        # 记录开始时间
+        from datetime import datetime
+        self.refresh_start_time = datetime.now()
+        
+        # 获取当前可见的股票（优先刷新）
+        visible_codes = self._get_visible_stock_codes()
+        
+        # 使用行情管理器批量获取
+        self.quote_manager.fetch_quotes(self.stock_list, priority_codes=visible_codes)
+        
+        # 显示刷新状态
+        active_threads = self.quote_manager.get_active_count()
+        self.log_message(f"🔄 开始刷新 {len(self.stock_list)} 只股票 (并发: {active_threads})")
+    
+    def _get_visible_stock_codes(self):
+        """获取当前可见的股票代码（用于优先刷新）"""
+        visible_codes = []
+        
+        # 获取表格可见行范围
+        if hasattr(self, 'stock_table'):
+            first_visible = self.stock_table.rowAt(0)
+            last_visible = self.stock_table.rowAt(self.stock_table.height())
             
-            # 创建新的工作线程
-            worker = QuoteWorker(stock_code)
-            worker.quote_ready.connect(self.on_quote_ready)
-            worker.error_occurred.connect(self.on_quote_error)
-            worker.finished.connect(lambda code=stock_code: self.on_worker_finished(code))
-            
-            self.workers[stock_code] = worker
-            worker.start()
+            if first_visible >= 0 and last_visible >= 0:
+                for row in range(first_visible, min(last_visible + 1, len(self.stock_list))):
+                    if row < len(self.stock_list):
+                        visible_codes.append(self.stock_list[row])
+        
+        return visible_codes if visible_codes else self.stock_list[:20]  # 默认前20个
+    
+    def on_batch_progress(self, completed, total):
+        """批次进度更新"""
+        progress = int(completed / total * 100)
+        
+        # 更新线程状态显示
+        active_threads = self.quote_manager.get_active_count()
+        max_threads = self.quote_manager.get_max_thread_count()
+        if hasattr(self, 'thread_status_label'):
+            self.thread_status_label.setText(f"线程: {active_threads}/{max_threads}")
+        
+        # 只在特定进度点更新日志，避免刷屏
+        if progress in [25, 50, 75, 100]:
+            self.log_message(f"📊 刷新进度: {completed}/{total} ({progress}%) - 活跃线程: {active_threads}")
+    
+    def on_all_quotes_completed(self):
+        """所有行情获取完成"""
+        if self.refresh_start_time:
+            from datetime import datetime
+            elapsed = (datetime.now() - self.refresh_start_time).total_seconds()
+            self.log_message(f"✅ 行情刷新完成，耗时: {elapsed:.2f}秒")
+            self.refresh_start_time = None
     
     def on_quote_ready(self, quote):
         """处理获取到的行情数据"""
         stock_code = quote['code']
         self.quote_cache[stock_code] = quote
         
-        # 检查是否有错误
+        # 只在有错误时记录日志，减少日志刷屏
         if quote.get('error'):
             self.log_message(f"❌ {stock_code} ({quote.get('name', '未知')}): {quote['error']}")
-        else:
-            self.log_message(f"✅ {stock_code} ({quote['name']}) 行情更新成功")
         
         # 更新显示
         self.update_display()
-    
-    def on_quote_error(self, stock_code, error_msg):
-        """处理获取行情时的错误"""
-        self.log_message(f"❌ 获取 {stock_code} 行情异常: {error_msg}")
-    
-    def on_worker_finished(self, stock_code):
-        """工作线程完成"""
-        if stock_code in self.workers:
-            worker = self.workers[stock_code]
-            # 确保线程完全停止
-            if worker.isRunning():
-                worker.quit()
-                worker.wait(100)
-            del self.workers[stock_code]
     
     def update_display(self):
         """更新行情显示"""
@@ -590,6 +744,9 @@ class TradingPanel(QMainWindow):
         for row, stock_code in enumerate(self.stock_list):
             if stock_code in self.quote_cache:
                 quote = self.quote_cache[stock_code]
+                
+                # 判断是否为指数
+                is_index = stock_code in ['999999', '399001', '399006']  # 上证、深证成指、创业板指
                 
                 # 代码
                 code_item = QTableWidgetItem(quote['code'])
@@ -629,22 +786,22 @@ class TradingPanel(QMainWindow):
                     change_item.setForeground(QColor(0, 128, 0))
                 self.stock_table.setItem(row, 4, change_item)
                 
-                # 总市值（亿）
-                market_cap = quote.get('market_cap', 0)
-                if market_cap > 0:
-                    market_cap_text = f"{market_cap:.2f}亿"
-                else:
+                # 总市值（亿）- 指数显示"-"
+                if is_index:
                     market_cap_text = "-"
+                else:
+                    market_cap = quote.get('market_cap', 0)
+                    market_cap_text = f"{market_cap:.2f}亿" if market_cap > 0 else "-"
                 market_cap_item = QTableWidgetItem(market_cap_text)
                 market_cap_item.setTextAlignment(Qt.AlignCenter)
                 self.stock_table.setItem(row, 5, market_cap_item)
                 
-                # 流通值（亿）
-                circulation = quote.get('circulation', 0)
-                if circulation > 0:
-                    circulation_text = f"{circulation:.2f}亿"
-                else:
+                # 流通值（亿）- 指数显示"-"
+                if is_index:
                     circulation_text = "-"
+                else:
+                    circulation = quote.get('circulation', 0)
+                    circulation_text = f"{circulation:.2f}亿" if circulation > 0 else "-"
                 circulation_item = QTableWidgetItem(circulation_text)
                 circulation_item.setTextAlignment(Qt.AlignCenter)
                 self.stock_table.setItem(row, 6, circulation_item)
@@ -697,12 +854,16 @@ class TradingPanel(QMainWindow):
         
         self.figure = Figure(figsize=(8, 6))
         self.canvas = FigureCanvas(self.figure)
-        self.ax = self.figure.add_subplot(111)
+        # 创建两个子图：上面K线，下面MACD
+        # 使用gridspec来控制高度比例
+        from matplotlib.gridspec import GridSpec
+        self.gs = GridSpec(2, 1, figure=self.figure, height_ratios=[3, 1], hspace=0.05)
+        self.ax = self.figure.add_subplot(self.gs[0])
+        self.ax_macd = self.figure.add_subplot(self.gs[1])
         
-        # 设置默认边距为0（最大化显示区域）
+        # 设置默认边距：左边留出空间显示价格
         self.figure.subplots_adjust(
-            top=1.0, bottom=0.0, left=0.0, right=1.0,
-            hspace=0.0, wspace=0.0
+            top=0.97, bottom=0.06, left=0.04, right=0.99
         )
         
         # 创建自定义工具栏（中文提示）
@@ -731,23 +892,28 @@ class TradingPanel(QMainWindow):
         self.ax.set_xticks([])
         self.ax.set_yticks([])
         
+        self.ax_macd.text(0.5, 0.5, 'MACD Indicator', 
+                         ha='center', va='center', fontsize=10, family='sans-serif')
+        self.ax_macd.set_xticks([])
+        self.ax_macd.set_yticks([])
+        
         layout.addWidget(self.canvas)
         
-        return widget
-    
-    def create_chat_widget(self):
-        """创建大模型对话区域（暂时隐藏）"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
+        # 添加滑块控制K线和MACD的高度比例
+        slider_layout = QHBoxLayout()
+        slider_label = QLabel("K线高度比例:")
+        slider_label.setStyleSheet("font-size: 12px;")
+        slider_layout.addWidget(slider_label)
         
-        label = QLabel("🤖 AI 智能助手")
-        label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px;")
-        layout.addWidget(label)
+        self.height_slider = QComboBox()
+        self.height_slider.addItems(['1:1', '2:1', '3:1', '4:1', '5:1', '6:1'])
+        self.height_slider.setCurrentText('3:1')
+        self.height_slider.currentTextChanged.connect(self.on_height_ratio_changed)
+        self.height_slider.setStyleSheet("font-size: 12px;")
+        slider_layout.addWidget(self.height_slider)
+        slider_layout.addStretch()
         
-        # 对话内容区域
-        content = QTextEdit()
-        content.setPlaceholderText("与 AI 助手对话...")
-        layout.addWidget(content)
+        layout.addLayout(slider_layout)
         
         return widget
     

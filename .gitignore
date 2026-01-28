@@ -22,3 +22,18 @@ ENV/
 # Cache
 .cache/
 *.log
+
+# Storage
+storage/cache/*
+storage/database/*
+storage/logs/*
+!storage/cache/.gitkeep
+!storage/database/.gitkeep
+!storage/logs/.gitkeep
+
+# Reference data (保留文件夹结构，不提交数据)
+reference/historical/**/*
+reference/reference_data/**/*
+reference/downloads/**/*
+!reference/**/.gitkeep
+!reference/**/README.md

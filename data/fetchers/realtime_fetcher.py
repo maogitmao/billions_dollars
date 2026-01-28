@@ -20,6 +20,16 @@ class RealtimeFetcher:
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Referer': 'http://finance.sina.com.cn/'  # 新浪需要Referer
         })
+        
+        # 连接池配置（优化大量并发请求）
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections=50,  # 连接池大小
+            pool_maxsize=50,      # 最大连接数
+            max_retries=2,        # 重试次数
+            pool_block=False      # 非阻塞
+        )
+        self.session.mount('http://', adapter)
+        self.session.mount('https://', adapter)
     
     def get_realtime_quote(self, stock_code):
         """
@@ -48,7 +58,10 @@ class RealtimeFetcher:
         """从新浪财经获取实时行情"""
         try:
             # 转换股票代码格式
-            if stock_code.startswith('6'):
+            if stock_code == '999999':
+                # 上证指数
+                symbol = 'sh000001'
+            elif stock_code.startswith('6'):
                 symbol = f'sh{stock_code}'
             elif stock_code.startswith('0') or stock_code.startswith('3'):
                 symbol = f'sz{stock_code}'
@@ -118,7 +131,10 @@ class RealtimeFetcher:
         """获取市值数据 - 使用腾讯财经接口"""
         try:
             # 转换股票代码格式
-            if stock_code.startswith('6'):
+            if stock_code == '999999':
+                # 上证指数没有市值
+                return 0, 0
+            elif stock_code.startswith('6'):
                 symbol = f'sh{stock_code}'
             else:
                 symbol = f'sz{stock_code}'
@@ -214,7 +230,10 @@ class RealtimeFetcher:
         """从腾讯财经获取实时行情"""
         try:
             # 转换股票代码格式
-            if stock_code.startswith('6'):
+            if stock_code == '999999':
+                # 上证指数
+                symbol = 'sh000001'
+            elif stock_code.startswith('6'):
                 symbol = f'sh{stock_code}'
             elif stock_code.startswith('0') or stock_code.startswith('3'):
                 symbol = f'sz{stock_code}'
@@ -284,7 +303,10 @@ class RealtimeFetcher:
         """从东方财富获取实时行情"""
         try:
             # 转换股票代码格式
-            if stock_code.startswith('6'):
+            if stock_code == '999999':
+                # 上证指数
+                secid = '1.000001'
+            elif stock_code.startswith('6'):
                 secid = f'1.{stock_code}'
             else:
                 secid = f'0.{stock_code}'

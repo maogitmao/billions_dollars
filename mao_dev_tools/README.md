@@ -39,7 +39,8 @@ mao_dev_tools/
 
 ## 💡 后续计划
 
-- [ ] Git常用命令
+- [x] Ubuntu常用命令
+- [x] Git常用命令
 - [ ] Python开发技巧
 - [ ] 数据库操作命令
 - [ ] Docker命令
@@ -49,6 +50,7 @@ mao_dev_tools/
 ## 🔖 快速链接
 
 - Ubuntu命令: `mao_dev_tools/ubuntu_commands.md`
+- Git命令: `mao_dev_tools/git_commands.md`
 - 项目文档: `docs/`
 - 测试文件: `tests/`
 - 参考数据: `reference/`

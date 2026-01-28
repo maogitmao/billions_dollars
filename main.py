@@ -621,7 +621,7 @@ class TradingPanel(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(5)
         
-        label = QLabel("📊 K-Line Chart")
+        label = QLabel("📊 K线图")
         label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px;")
         label.setFixedHeight(40)
         layout.addWidget(label)
@@ -635,12 +635,28 @@ class TradingPanel(QMainWindow):
         self.canvas = FigureCanvas(self.figure)
         self.ax = self.figure.add_subplot(111)
         
+        # 创建自定义工具栏（中文提示）
+        class ChineseNavigationToolbar(NavigationToolbar):
+            """中文工具栏"""
+            # 重写工具提示文本
+            toolitems = (
+                ('Home', '复位视图', 'home', 'home'),
+                ('Back', '后退', 'back', 'back'),
+                ('Forward', '前进', 'forward', 'forward'),
+                (None, None, None, None),
+                ('Pan', '平移\n左键拖动平移\n右键拖动缩放', 'move', 'pan'),
+                ('Zoom', '区域缩放\n框选区域放大', 'zoom_to_rect', 'zoom'),
+                (None, None, None, None),
+                ('Subplots', '子图配置', 'subplots', 'configure_subplots'),
+                ('Save', '保存图片', 'filesave', 'save_figure'),
+            )
+        
         # 添加工具栏（支持缩放、平移等）
-        self.toolbar = NavigationToolbar(self.canvas, widget)
+        self.toolbar = ChineseNavigationToolbar(self.canvas, widget)
         layout.addWidget(self.toolbar)
         
         # 初始化空图表
-        self.ax.text(0.5, 0.5, 'Click stock to view K-Line chart', 
+        self.ax.text(0.5, 0.5, '点击股票查看K线图', 
                     ha='center', va='center', fontsize=12)
         self.ax.set_xticks([])
         self.ax.set_yticks([])

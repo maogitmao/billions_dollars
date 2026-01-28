@@ -114,30 +114,32 @@ class RealtimeFetcher:
             return None
     
     def get_market_cap(self, stock_code, current_price):
-        """获取市值数据"""
+        """获取市值数据 - 使用腾讯财经接口"""
         try:
-            # 从东方财富获取市值数据
+            # 转换股票代码格式
             if stock_code.startswith('6'):
-                market_code = f'1.{stock_code}'
+                symbol = f'sh{stock_code}'
             else:
-                market_code = f'0.{stock_code}'
+                symbol = f'sz{stock_code}'
             
-            url = f'http://push2.eastmoney.com/api/qt/stock/get?secid={market_code}&fields=f116,f117'
+            url = f'http://qt.gtimg.cn/q={symbol}'
             response = self.session.get(url, timeout=3)
+            response.encoding = 'gbk'
             
             if response.status_code == 200:
-                data = response.json()
-                if data.get('data'):
-                    # f116: 总市值（元）
-                    # f117: 流通市值（元）
-                    total_market_cap = data['data'].get('f116', 0)
-                    circulation_market_cap = data['data'].get('f117', 0)
+                content = response.text
+                if 'v_' in content:
+                    data_str = content.split('="')[1].split('";')[0]
+                    data_list = data_str.split('~')
                     
-                    if total_market_cap > 0:
-                        # 转换为亿元
-                        market_cap = total_market_cap / 100000000
-                        circulation = circulation_market_cap / 100000000 if circulation_market_cap > 0 else 0
-                        return market_cap, circulation
+                    if len(data_list) >= 46:
+                        # 腾讯接口：位置44=总市值，位置45=流通市值（单位：亿元）
+                        total_market_cap = float(data_list[44]) if data_list[44] else 0
+                        circulation_market_cap = float(data_list[45]) if data_list[45] else 0
+                        
+                        if total_market_cap > 0:
+                            # 直接返回，单位已经是亿元
+                            return total_market_cap, circulation_market_cap
         except:
             pass
         

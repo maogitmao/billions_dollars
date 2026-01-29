@@ -6,6 +6,7 @@
 
 - `ubuntu_commands.md` - Ubuntu常用命令行速查手册
 - `git_commands.md` - Git版本控制命令速查手册
+- `proxy_setup.md` - Ubuntu代理设置完整指南
 
 ## 🎯 使用说明
 
@@ -32,6 +33,7 @@ mao_dev_tools/
 ├── README.md                   # 本文件
 ├── ubuntu_commands.md          # Ubuntu命令速查
 ├── git_commands.md             # Git命令速查
+├── proxy_setup.md              # 代理设置指南
 ├── python_snippets.md          # Python代码片段（待添加）
 ├── scripts/                    # 常用脚本（待添加）
 └── configs/                    # 配置文件（待添加）
@@ -41,6 +43,7 @@ mao_dev_tools/
 
 - [x] Ubuntu常用命令
 - [x] Git常用命令
+- [x] 代理设置指南
 - [ ] Python开发技巧
 - [ ] 数据库操作命令
 - [ ] Docker命令
@@ -51,6 +54,7 @@ mao_dev_tools/
 
 - Ubuntu命令: `mao_dev_tools/ubuntu_commands.md`
 - Git命令: `mao_dev_tools/git_commands.md`
+- 代理设置: `mao_dev_tools/proxy_setup.md`
 - 项目文档: `docs/`
 - 测试文件: `tests/`
 - 参考数据: `reference/`

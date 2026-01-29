@@ -1,13 +1,12 @@
 #!/bin/bash
-# 一键推送脚本
+# 一键推送脚本 - 简洁版
 
-echo "📦 正在添加文件..."
-git add .
+git add . > /dev/null 2>&1
+git commit -m "更新代码 $(date '+%Y-%m-%d %H:%M:%S')" > /dev/null 2>&1
+git push > /dev/null 2>&1
 
-echo "💾 正在提交..."
-git commit -m "更新代码 $(date '+%Y-%m-%d %H:%M:%S')"
-
-echo "🚀 正在推送到 GitHub..."
-git push
-
-echo "✅ 代码已成功推送到 GitHub！"
+if [ $? -eq 0 ]; then
+    echo "✅ 推送成功！"
+else
+    echo "❌ 推送失败，请检查网络或查看详细信息"
+fi
